@@ -4,8 +4,8 @@ RequiresMountsFor=/opt/lb-auto /var/backups/lb-auto
 
 [Service]
 Type=oneshot
-User=lbauto
-Group=lbauto
+User=__LB_AUTO_USER__
+Group=__LB_AUTO_GROUP__
 Environment=LB_AUTO_APP_DIR=/opt/lb-auto
 Environment=LB_AUTO_BACKUP_DIR=/var/backups/lb-auto
 ExecStart=/opt/lb-auto/deploy/backup-lb-auto.sh

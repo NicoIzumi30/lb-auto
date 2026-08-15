@@ -13,7 +13,7 @@ Cloudflare Access / WAF
        ▼
 cloudflared.service
        │
-       │ HTTP lokal 127.0.0.1:8000
+       │ HTTP lokal 127.0.0.1:8542
        ▼
 lb-auto.service
        │
@@ -22,7 +22,7 @@ lb-auto.service
        └── Upload: /opt/lb-auto/uploads/
 ```
 
-Port aplikasi tidak dibuka ke internet. `cloudflared` membangun koneksi outbound ke Cloudflare dan meneruskan hostname publik ke `127.0.0.1:8000`. Cloudflare menyatakan Tunnel bekerja menggunakan koneksi keluar sehingga origin tidak memerlukan port inbound publik. Lihat [Cloudflare Tunnel documentation](https://developers.cloudflare.com/tunnel/).
+Port aplikasi tidak dibuka ke internet. `cloudflared` membangun koneksi outbound ke Cloudflare dan meneruskan hostname publik ke `127.0.0.1:8542`. Cloudflare menyatakan Tunnel bekerja menggunakan koneksi keluar sehingga origin tidak memerlukan port inbound publik. Lihat [Cloudflare Tunnel documentation](https://developers.cloudflare.com/tunnel/).
 
 ## 1. Keputusan deployment
 
@@ -32,10 +32,11 @@ Konfigurasi yang disarankan untuk aplikasi saat ini:
 | --- | --- |
 | Sistem operasi | Ubuntu Server 22.04/24.04 atau Debian 12 |
 | Lokasi aplikasi | `/opt/lb-auto` |
-| User service | `lbauto` tanpa akses login shell |
+| User service | User Linux yang digunakan untuk deployment |
+| Source code | Clone SSH dari `git@github.com:NicoIzumi30/lb-auto.git` |
 | Python | Virtual environment di `/opt/lb-auto/.venv` |
 | App server | Uvicorn melalui `lb-auto.service` |
-| Bind address | `127.0.0.1:8000` |
+| Bind address | `127.0.0.1:8542` |
 | Worker | Tepat 1 worker selama menggunakan SQLite |
 | Public ingress | Cloudflare Tunnel |
 | Tunnel management | Remotely managed dari dashboard Cloudflare |
@@ -50,11 +51,13 @@ Siapkan:
 
 1. Server atau VM Linux yang selalu menyala.
 2. Akses `sudo` ke server.
-3. Domain aktif di akun Cloudflare.
-4. Subdomain, misalnya `app.lbauto.co.id`.
-5. Akses ke Cloudflare Zero Trust/Networking.
-6. Token Fonnte produksi yang baru.
-7. Backup proyek dan database sebelum migrasi.
+3. Akun GitHub yang mempunyai akses ke repository LB AUTO.
+4. SSH key GitHub pada user Linux yang menjalankan deployment.
+5. Domain aktif di akun Cloudflare.
+6. Subdomain, misalnya `app.lbauto.co.id`.
+7. Akses ke Cloudflare Zero Trust/Networking.
+8. Token Fonnte produksi yang baru.
+9. Backup database dan uploads sebelum migrasi atau update.
 
 Cloudflare mencantumkan akun, domain di Cloudflare, serta server dengan akses internet sebagai prasyarat untuk published application. Lihat [official Tunnel setup](https://developers.cloudflare.com/tunnel/setup/).
 
@@ -65,9 +68,9 @@ Wajib dilakukan sebelum hostname dipublikasikan:
 1. Ganti `LB_AUTO_SECRET` dengan nilai acak.
 2. Rotasi token Fonnte yang sebelumnya pernah dibagikan melalui percakapan atau media lain.
 3. Jangan menyalin file `.env` development ke server produksi.
-4. Ganti password seluruh akun demo atau buat akun produksi dan nonaktifkan akun demo.
+4. Ganti password seluruh akun bawaan sebelum aplikasi digunakan.
 5. Aktifkan Cloudflare Access jika aplikasi hanya digunakan staf LB AUTO.
-6. Jangan membuka port 8000 pada firewall/router.
+6. Jangan membuka port 8542 pada firewall/router.
 7. Jangan menjalankan Uvicorn sebagai `root`.
 8. Gunakan satu Uvicorn worker karena penyimpanan masih SQLite.
 
@@ -77,60 +80,58 @@ Update paket dan instal kebutuhan dasar:
 
 ```bash
 sudo apt update
-sudo apt install -y python3 python3-venv python3-pip sqlite3 rsync curl ca-certificates
+sudo apt install -y git openssh-client python3 python3-venv python3-pip sqlite3 rsync curl ca-certificates
 ```
 
-Buat user service tanpa login shell:
+Periksa user Linux yang akan menjalankan aplikasi:
 
 ```bash
-sudo useradd --system --home-dir /opt/lb-auto --shell /usr/sbin/nologin lbauto
+id
+whoami
 ```
 
-Jika muncul pesan bahwa user sudah ada, lanjutkan ke langkah berikutnya.
+User tersebut harus mempunyai akses `sudo` dan SSH key yang terhubung ke akun GitHub.
 
-Buat direktori aplikasi:
+Jika SSH key belum tersedia, buat key sebagai user tersebut:
 
 ```bash
-sudo install -d -o lbauto -g lbauto -m 0750 /opt/lb-auto
+ssh-keygen -t ed25519 -C "server-lb-auto"
 ```
 
-## 5. Memindahkan source code
-
-### Pilihan A — Proyek sudah berada di server
-
-Contoh apabila source berada di `/home/yuki-x2/project/LB-AUTO`:
+Tampilkan public key:
 
 ```bash
-sudo rsync -a \
-  --exclude '.env' \
-  --exclude '.venv' \
-  --exclude '__pycache__' \
-  /home/yuki-x2/project/LB-AUTO/ /opt/lb-auto/
+cat ~/.ssh/id_ed25519.pub
 ```
 
-Kemudian atur kepemilikan:
+Tambahkan public key ke **GitHub → Settings → SSH and GPG keys**, lalu uji koneksi:
 
 ```bash
-sudo chown -R lbauto:lbauto /opt/lb-auto
+ssh -T git@github.com
 ```
 
-### Pilihan B — Upload dari komputer lain
+GitHub dapat meminta konfirmasi fingerprint saat koneksi pertama. Pastikan fingerprint sesuai dokumentasi GitHub sebelum menjawab `yes`.
 
-Dari komputer development:
+## 5. Clone source code dari GitHub
+
+Buat direktori aplikasi dengan kepemilikan user Linux yang sedang digunakan:
 
 ```bash
-rsync -av \
-  --exclude '.env' \
-  --exclude '.venv' \
-  --exclude '__pycache__' \
-  ./ user-server@IP_SERVER:/tmp/lb-auto-release/
+sudo install -d -o "$(id -un)" -g "$(id -gn)" -m 0750 /opt/lb-auto
 ```
 
-Kemudian di server:
+Clone repository melalui SSH:
 
 ```bash
-sudo rsync -a /tmp/lb-auto-release/ /opt/lb-auto/
-sudo chown -R lbauto:lbauto /opt/lb-auto
+git clone git@github.com:NicoIzumi30/lb-auto.git /opt/lb-auto
+```
+
+Periksa branch dan remote:
+
+```bash
+cd /opt/lb-auto
+git remote -v
+git branch --show-current
 ```
 
 Pastikan file berikut tersedia:
@@ -143,23 +144,24 @@ Minimal harus ada `backend`, `assets`, `app.js`, `index.html`, `styles.css`, dan
 
 ## 6. Membuat Python virtual environment
 
-Buat virtual environment sebagai user aplikasi:
+Buat virtual environment menggunakan user Linux deployment:
 
 ```bash
-sudo -u lbauto python3 -m venv /opt/lb-auto/.venv
+cd /opt/lb-auto
+python3 -m venv .venv
 ```
 
 Instal dependensi:
 
 ```bash
-sudo -u lbauto /opt/lb-auto/.venv/bin/pip install --upgrade pip
-sudo -u lbauto /opt/lb-auto/.venv/bin/pip install -r /opt/lb-auto/requirements.txt
+/opt/lb-auto/.venv/bin/pip install --upgrade pip
+/opt/lb-auto/.venv/bin/pip install -r /opt/lb-auto/requirements.txt
 ```
 
 Verifikasi:
 
 ```bash
-sudo -u lbauto /opt/lb-auto/.venv/bin/python -c "import fastapi, uvicorn; print('dependencies ok')"
+/opt/lb-auto/.venv/bin/python -c "import fastapi, uvicorn; print('dependencies ok')"
 ```
 
 ## 7. Membuat environment produksi
@@ -215,63 +217,37 @@ Hasil yang diharapkan:
 
 Jangan memasukkan file environment ke Git atau menyalinnya ke dokumentasi.
 
-## 8. Inisialisasi database dan akun produksi
+## 8. Inisialisasi database dan akun aplikasi
 
 Inisialisasi schema serta data awal:
 
 ```bash
 cd /opt/lb-auto
-sudo -u lbauto /opt/lb-auto/.venv/bin/python -m backend.seed
+/opt/lb-auto/.venv/bin/python -m backend.seed
 ```
 
 Tampilkan akun yang tersedia:
 
 ```bash
-sudo -u lbauto /opt/lb-auto/.venv/bin/python -m backend.admin list-users
+/opt/lb-auto/.venv/bin/python -m backend.admin list-users
 ```
 
-### Pilihan 1 — Ganti password setiap akun demo
+Gunakan akun yang sudah tersedia. Tidak perlu membuat user aplikasi baru. Ganti password masing-masing akun:
 
 Jalankan untuk masing-masing akun:
 
 ```bash
-sudo -u lbauto /opt/lb-auto/.venv/bin/python -m backend.admin set-password owner@lbauto.id
-sudo -u lbauto /opt/lb-auto/.venv/bin/python -m backend.admin set-password krisna@lbauto.id
-sudo -u lbauto /opt/lb-auto/.venv/bin/python -m backend.admin set-password ciprut@lbauto.id
-sudo -u lbauto /opt/lb-auto/.venv/bin/python -m backend.admin set-password checker@lbauto.id
-sudo -u lbauto /opt/lb-auto/.venv/bin/python -m backend.admin set-password legal@lbauto.id
-sudo -u lbauto /opt/lb-auto/.venv/bin/python -m backend.admin set-password hod@lbauto.id
-sudo -u lbauto /opt/lb-auto/.venv/bin/python -m backend.admin set-password workshop@lbauto.id
-sudo -u lbauto /opt/lb-auto/.venv/bin/python -m backend.admin set-password sales@lbauto.id
+/opt/lb-auto/.venv/bin/python -m backend.admin set-password owner@lbauto.id
+/opt/lb-auto/.venv/bin/python -m backend.admin set-password krisna@lbauto.id
+/opt/lb-auto/.venv/bin/python -m backend.admin set-password ciprut@lbauto.id
+/opt/lb-auto/.venv/bin/python -m backend.admin set-password checker@lbauto.id
+/opt/lb-auto/.venv/bin/python -m backend.admin set-password legal@lbauto.id
+/opt/lb-auto/.venv/bin/python -m backend.admin set-password hod@lbauto.id
+/opt/lb-auto/.venv/bin/python -m backend.admin set-password workshop@lbauto.id
+/opt/lb-auto/.venv/bin/python -m backend.admin set-password sales@lbauto.id
 ```
 
 CLI meminta password secara interaktif sehingga password tidak masuk ke shell history. Gunakan password unik minimal 12 karakter untuk setiap akun.
-
-### Pilihan 2 — Buat akun produksi baru
-
-Contoh membuat Owner baru:
-
-```bash
-sudo -u lbauto /opt/lb-auto/.venv/bin/python -m backend.admin create-user \
-  --name "Owner Production" \
-  --email "owner.production@example.com" \
-  --role ROLE_OWNER \
-  --phone "6281234567890"
-```
-
-Setelah memastikan Owner baru dapat login, nonaktifkan Owner demo:
-
-```bash
-sudo -u lbauto /opt/lb-auto/.venv/bin/python -m backend.admin disable-user owner@lbauto.id
-```
-
-Contoh menonaktifkan akun demo lain:
-
-```bash
-sudo -u lbauto /opt/lb-auto/.venv/bin/python -m backend.admin disable-user checker@lbauto.id
-```
-
-CLI mencegah Owner aktif terakhir dinonaktifkan.
 
 ## 9. Memasang service FastAPI
 
@@ -284,10 +260,23 @@ Template telah tersedia di:
 Pasang unit file:
 
 ```bash
-sudo install -o root -g root -m 0644 \
-  /opt/lb-auto/deploy/lb-auto.service \
-  /etc/systemd/system/lb-auto.service
+APP_USER="$(id -un)"
+APP_GROUP="$(id -gn)"
+sed \
+  -e "s/__LB_AUTO_USER__/${APP_USER}/g" \
+  -e "s/__LB_AUTO_GROUP__/${APP_GROUP}/g" \
+  /opt/lb-auto/deploy/lb-auto.service | \
+  sudo tee /etc/systemd/system/lb-auto.service >/dev/null
+sudo chmod 0644 /etc/systemd/system/lb-auto.service
 ```
+
+Perintah tersebut mengisi `User=` dan `Group=` memakai user Linux yang menjalankan deployment. Verifikasi hasilnya:
+
+```bash
+sudo systemctl cat lb-auto.service
+```
+
+Pastikan tidak ada teks `__LB_AUTO_USER__` atau `__LB_AUTO_GROUP__` yang tersisa.
 
 Muat ulang systemd dan jalankan service:
 
@@ -317,7 +306,7 @@ sudo journalctl -u lb-auto.service -f
 Tes aplikasi dari server:
 
 ```bash
-curl -s http://127.0.0.1:8000/api/health
+curl -s http://127.0.0.1:8542/api/health
 ```
 
 Hasil yang diharapkan:
@@ -329,10 +318,10 @@ Hasil yang diharapkan:
 Pastikan Uvicorn hanya mendengarkan localhost:
 
 ```bash
-sudo ss -ltnp | grep ':8000'
+sudo ss -ltnp | grep ':8542'
 ```
 
-Alamat yang diharapkan adalah `127.0.0.1:8000`, bukan `0.0.0.0:8000`.
+Alamat yang diharapkan adalah `127.0.0.1:8542`, bukan `0.0.0.0:8542`.
 
 ## 10. Menginstal cloudflared
 
@@ -406,14 +395,14 @@ Di tunnel `lb-auto-production`:
 6. Pada Service URL masukkan:
 
 ```text
-http://127.0.0.1:8000
+http://127.0.0.1:8542
 ```
 
 7. Simpan route.
 
 Mapping hostname ke local service merupakan model resmi published application Cloudflare Tunnel. Lihat [Tunnel routing](https://developers.cloudflare.com/tunnel/routing/).
 
-Jangan menggunakan `https://127.0.0.1:8000` karena Uvicorn pada konfigurasi ini menyediakan HTTP lokal. HTTPS dihentikan di edge Cloudflare.
+Jangan menggunakan `https://127.0.0.1:8542` karena Uvicorn pada konfigurasi ini menyediakan HTTP lokal. HTTPS dihentikan di edge Cloudflare.
 
 Tes melalui browser:
 
@@ -485,7 +474,7 @@ Backend membatasi setiap upload hingga 8 MB dan hanya menerima JPG, PNG, atau We
 
 ## 15. Firewall server
 
-Karena Tunnel menggunakan koneksi outbound, port 8000 tidak perlu dibuka. Cloudflare menyarankan positive security model dengan memblokir ingress dan hanya mengizinkan koneksi yang diperlukan. Tunnel menggunakan outbound port `7844` melalui UDP untuk QUIC atau TCP untuk HTTP/2. Lihat [Tunnel with firewall](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/configure-tunnels/tunnel-with-firewall/).
+Karena Tunnel menggunakan koneksi outbound, port 8542 tidak perlu dibuka. Cloudflare menyarankan positive security model dengan memblokir ingress dan hanya mengizinkan koneksi yang diperlukan. Tunnel menggunakan outbound port `7844` melalui UDP untuk QUIC atau TCP untuk HTTP/2. Lihat [Tunnel with firewall](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/configure-tunnels/tunnel-with-firewall/).
 
 Contoh UFW, apabila SSH menggunakan port standar:
 
@@ -502,7 +491,7 @@ Penting: izinkan port SSH yang benar sebelum mengaktifkan firewall agar tidak te
 Jangan menjalankan:
 
 ```bash
-sudo ufw allow 8000
+sudo ufw allow 8542
 ```
 
 Jika server menerapkan egress firewall ketat, izinkan outbound TCP dan UDP port `7844` ke endpoint Cloudflare Tunnel. QUIC direkomendasikan, tetapi `cloudflared` dapat fallback ke HTTP/2 melalui TCP jika UDP diblokir.
@@ -527,18 +516,23 @@ Template backup telah tersedia:
 Buat direktori backup:
 
 ```bash
-sudo install -d -o lbauto -g lbauto -m 0750 /var/backups/lb-auto
+sudo install -d -o "$(id -un)" -g "$(id -gn)" -m 0750 /var/backups/lb-auto
 ```
 
 Pasang service dan timer:
 
 ```bash
-sudo install -o root -g root -m 0644 \
-  /opt/lb-auto/deploy/lb-auto-backup.service \
-  /etc/systemd/system/lb-auto-backup.service
+APP_USER="$(id -un)"
+APP_GROUP="$(id -gn)"
+sed \
+  -e "s/__LB_AUTO_USER__/${APP_USER}/g" \
+  -e "s/__LB_AUTO_GROUP__/${APP_GROUP}/g" \
+  /opt/lb-auto/deploy/lb-auto-backup.service | \
+  sudo tee /etc/systemd/system/lb-auto-backup.service >/dev/null
 sudo install -o root -g root -m 0644 \
   /opt/lb-auto/deploy/lb-auto-backup.timer \
   /etc/systemd/system/lb-auto-backup.timer
+sudo chmod 0644 /etc/systemd/system/lb-auto-backup.service
 sudo systemctl daemon-reload
 sudo systemctl enable --now lb-auto-backup.timer
 ```
@@ -593,9 +587,9 @@ sudo tar -C /opt/lb-auto -xzf /var/backups/lb-auto/uploads-YYYYMMDD-HHMMSS.tar.g
 Atur permission dan mulai aplikasi:
 
 ```bash
-sudo chown -R lbauto:lbauto /opt/lb-auto/lb_auto.db /opt/lb-auto/uploads
+sudo chown -R "$(id -un):$(id -gn)" /opt/lb-auto/lb_auto.db /opt/lb-auto/uploads
 sudo systemctl start lb-auto.service
-curl -s http://127.0.0.1:8000/api/health
+curl -s http://127.0.0.1:8542/api/health
 ```
 
 Login dan periksa beberapa unit, foto, user, serta laporan sebelum menutup maintenance window.
@@ -609,30 +603,26 @@ sudo systemctl start lb-auto-backup.service
 sudo systemctl status lb-auto-backup.service --no-pager
 ```
 
-### 18.2 Upload release baru
+### 18.2 Ambil versi terbaru dari GitHub
 
-Gunakan `rsync` dan pertahankan data runtime:
+Periksa status repository lalu tarik commit terbaru:
 
 ```bash
 sudo systemctl stop lb-auto.service
-sudo rsync -a --delete \
-  --exclude '.env' \
-  --exclude '.venv' \
-  --exclude 'lb_auto.db' \
-  --exclude 'uploads' \
-  /path/release-baru/ /opt/lb-auto/
-sudo chown -R lbauto:lbauto /opt/lb-auto
+cd /opt/lb-auto
+git status --short
+git pull --ff-only
 ```
 
-Perintah `--delete` menghapus file source lama yang tidak ada di release baru, tetapi pengecualian menjaga database, upload, virtual environment, dan environment file. Periksa path sumber dengan teliti sebelum menjalankannya.
+`git pull --ff-only` menghentikan update jika repository server mempunyai commit lokal yang belum ada di remote. Selesaikan perubahan lokal sebelum melanjutkan. Database, `.env`, virtual environment, dan folder `uploads` berada di `.gitignore` sehingga data runtime tetap dipertahankan.
 
 ### 18.3 Update dependency dan validasi
 
 ```bash
-sudo -u lbauto /opt/lb-auto/.venv/bin/pip install -r /opt/lb-auto/requirements.txt
+/opt/lb-auto/.venv/bin/pip install -r /opt/lb-auto/requirements.txt
 cd /opt/lb-auto
-sudo -u lbauto /opt/lb-auto/.venv/bin/python -m py_compile backend/*.py
-sudo -u lbauto /opt/lb-auto/.venv/bin/python -m unittest -v
+/opt/lb-auto/.venv/bin/python -m py_compile backend/*.py
+/opt/lb-auto/.venv/bin/python -m unittest -v
 ```
 
 ### 18.4 Jalankan versi baru
@@ -640,7 +630,7 @@ sudo -u lbauto /opt/lb-auto/.venv/bin/python -m unittest -v
 ```bash
 sudo systemctl start lb-auto.service
 sudo systemctl status lb-auto.service --no-pager
-curl -s http://127.0.0.1:8000/api/health
+curl -s http://127.0.0.1:8542/api/health
 ```
 
 Tidak perlu me-restart `cloudflared` jika hostname dan port lokal tidak berubah.
@@ -678,7 +668,7 @@ systemctl list-timers lb-auto-backup.timer
 Urutan diagnosis yang disarankan:
 
 1. `lb-auto.service` harus sehat.
-2. `curl http://127.0.0.1:8000/api/health` harus berhasil.
+2. `curl http://127.0.0.1:8542/api/health` harus berhasil.
 3. `cloudflared.service` harus sehat.
 4. Tunnel harus `Healthy` di dashboard.
 5. Baru periksa Access, DNS, WAF, dan browser.
@@ -697,21 +687,21 @@ Periksa:
 - path `/opt/lb-auto` benar;
 - `.venv/bin/uvicorn` tersedia;
 - environment file tersedia;
-- user `lbauto` dapat menulis database dan uploads;
-- port 8000 belum dipakai proses lain.
+- user pada `User=` di service dapat menulis database dan uploads;
+- port 8542 belum dipakai proses lain.
 
 ### Tunnel menampilkan 502 Bad Gateway
 
 Tes origin lokal:
 
 ```bash
-curl -v http://127.0.0.1:8000/api/health
+curl -v http://127.0.0.1:8542/api/health
 ```
 
 Pastikan Service URL route adalah:
 
 ```text
-http://127.0.0.1:8000
+http://127.0.0.1:8542
 ```
 
 Cloudflare menjelaskan bahwa 502 pada Tunnel biasanya berarti connector tersambung tetapi tidak dapat menjangkau origin, port salah, atau protokol HTTP/HTTPS tidak sesuai. Lihat [Tunnel troubleshooting](https://developers.cloudflare.com/tunnel/troubleshooting/).
@@ -754,14 +744,14 @@ sudo systemctl restart lb-auto.service
 Periksa permission:
 
 ```bash
-sudo -u lbauto test -w /opt/lb-auto/uploads
-sudo ls -ld /opt/lb-auto/uploads
+test -w /opt/lb-auto/uploads
+ls -ld /opt/lb-auto/uploads
 ```
 
 Jika folder belum ada:
 
 ```bash
-sudo install -d -o lbauto -g lbauto -m 0750 /opt/lb-auto/uploads
+sudo install -d -o "$(id -un)" -g "$(id -gn)" -m 0750 /opt/lb-auto/uploads
 sudo systemctl restart lb-auto
 ```
 
@@ -786,27 +776,28 @@ Jika kebutuhan concurrency atau jumlah user meningkat signifikan, rencanakan mig
 ### Server
 
 - [ ] Aplikasi berada di `/opt/lb-auto`.
-- [ ] Service berjalan sebagai user `lbauto`, bukan root.
+- [ ] Repository berasal dari `git@github.com:NicoIzumi30/lb-auto.git`.
+- [ ] Service berjalan sebagai user Linux deployment, bukan root.
 - [ ] Virtual environment dan dependency terpasang.
 - [ ] `lb-auto.service` enabled dan active.
-- [ ] Uvicorn bind ke `127.0.0.1:8000`.
+- [ ] Uvicorn bind ke `127.0.0.1:8542`.
 - [ ] Hanya satu worker Uvicorn.
-- [ ] Port 8000 tidak dibuka pada firewall.
+- [ ] Port 8542 tidak dibuka pada firewall.
 
 ### Rahasia dan akun
 
 - [ ] `LB_AUTO_SECRET` sudah acak dan disimpan aman.
 - [ ] Token Fonnte sudah dirotasi.
 - [ ] Environment file memiliki mode `600`.
-- [ ] Password akun demo sudah diganti atau akunnya dinonaktifkan.
-- [ ] Terdapat minimal satu Owner produksi aktif.
+- [ ] Password seluruh akun bawaan sudah diganti.
+- [ ] Akun Owner dapat login menggunakan password produksi.
 - [ ] Nomor WhatsApp approver sudah dikonfigurasi.
 
 ### Cloudflare
 
 - [ ] `cloudflared.service` enabled dan active.
 - [ ] Tunnel berstatus `Healthy`.
-- [ ] Public hostname menuju `http://127.0.0.1:8000`.
+- [ ] Public hostname menuju `http://127.0.0.1:8542`.
 - [ ] HTTPS aktif.
 - [ ] Cloudflare Access melindungi hostname.
 - [ ] Policy Access hanya mengizinkan staf terkait.
@@ -841,22 +832,22 @@ Jika kebutuhan concurrency atau jumlah user meningkat signifikan, rencanakan mig
 | `deploy/backup-lb-auto.sh` | Backup SQLite dan uploads |
 | `deploy/lb-auto-backup.service` | One-shot backup service |
 | `deploy/lb-auto-backup.timer` | Jadwal backup harian |
-| `backend/admin.py` | CLI password, user produksi, dan deaktivasi akun demo |
+| `backend/admin.py` | CLI pengaturan password dan status akun aplikasi |
 
 ## 23. Urutan deployment singkat
 
 ```text
-1. Siapkan server dan user lbauto
-2. Salin source ke /opt/lb-auto
+1. Siapkan server dan SSH key GitHub pada user Linux deployment
+2. Clone git@github.com:NicoIzumi30/lb-auto.git ke /opt/lb-auto
 3. Buat virtual environment dan instal dependency
 4. Buat /etc/lb-auto/lb-auto.env
 5. Inisialisasi database
-6. Ganti/nonaktifkan akun demo
-7. Pasang dan tes lb-auto.service
-8. Pastikan origin hanya di 127.0.0.1:8000
+6. Ganti password akun yang tersedia
+7. Generate, pasang, dan tes lb-auto.service dengan user Linux deployment
+8. Pastikan origin hanya di 127.0.0.1:8542
 9. Buat Cloudflare Tunnel
 10. Pasang cloudflared.service
-11. Route domain ke http://127.0.0.1:8000
+11. Route domain ke http://127.0.0.1:8542
 12. Aktifkan Cloudflare Access dan security rules
 13. Pasang backup timer
 14. Uji domain, login, upload, WA, dan full flow

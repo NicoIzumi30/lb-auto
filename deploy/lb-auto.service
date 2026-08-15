@@ -5,12 +5,12 @@ After=network-online.target
 
 [Service]
 Type=simple
-User=lbauto
-Group=lbauto
+User=__LB_AUTO_USER__
+Group=__LB_AUTO_GROUP__
 WorkingDirectory=/opt/lb-auto
 EnvironmentFile=/etc/lb-auto/lb-auto.env
 Environment=PYTHONUNBUFFERED=1
-ExecStart=/opt/lb-auto/.venv/bin/uvicorn backend.main:app --host 127.0.0.1 --port 8000 --workers 1 --proxy-headers --forwarded-allow-ips=127.0.0.1
+ExecStart=/opt/lb-auto/.venv/bin/uvicorn backend.main:app --host 127.0.0.1 --port 8542 --workers 1 --proxy-headers --forwarded-allow-ips=127.0.0.1
 Restart=on-failure
 RestartSec=5
 TimeoutStartSec=30

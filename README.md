@@ -12,10 +12,10 @@ PWA mobile-first untuk mengelola alur sourcing, inspeksi, pembelian, repair, dok
 
 ```bash
 python3 -m backend.seed
-python3 -m uvicorn backend.main:app --reload
+python3 -m uvicorn backend.main:app --host 127.0.0.1 --port 8542 --reload
 ```
 
-Buka `http://127.0.0.1:8000`. Dokumentasi API tersedia di `http://127.0.0.1:8000/docs`.
+Buka `http://127.0.0.1:8542`. Dokumentasi API tersedia di `http://127.0.0.1:8542/docs`.
 
 ## Akun demo
 
@@ -47,7 +47,7 @@ Konfigurasi Fonnte dibaca dari `.env` dan tidak pernah dikirim ke frontend. Isi 
 ```env
 FONNTE_ENABLED=true
 FONNTE_TOKEN=token-fonnte-anda
-APP_BASE_URL=http://127.0.0.1:8000
+APP_BASE_URL=http://127.0.0.1:8542
 ```
 
 Flow unit yang dipaksakan server: Initial QC → legal precheck → inspeksi 8 foto → approval HOD → voucher dan bukti bayar → serah-terima repair → pekerjaan per panel → Repair QC → Document QC → listing → booking → pembayaran/finance → deal → jadwal delivery → delivery selesai.

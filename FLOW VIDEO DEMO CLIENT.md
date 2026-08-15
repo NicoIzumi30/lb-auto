@@ -60,19 +60,19 @@ Apabila video perlu lebih pendek, gunakan versi 7–8 menit dengan mempercepat b
 Jalankan server:
 
 ```bash
-python3 -m uvicorn backend.main:app --host 0.0.0.0 --port 8000
+python3 -m uvicorn backend.main:app --host 0.0.0.0 --port 8542
 ```
 
 Buka aplikasi:
 
 ```text
-http://127.0.0.1:8000
+http://127.0.0.1:8542
 ```
 
 Pastikan endpoint berikut memberikan status `ok`:
 
 ```text
-http://127.0.0.1:8000/api/health
+http://127.0.0.1:8542/api/health
 ```
 
 ### 4.2 Bersihkan tampilan browser

@@ -9,14 +9,14 @@ Terakhir diperbarui: 15 Agustus 2026, untuk PWA versi 22.
 Jalankan aplikasi dari direktori proyek:
 
 ```bash
-python3 -m uvicorn backend.main:app --host 0.0.0.0 --port 8000
+python3 -m uvicorn backend.main:app --host 0.0.0.0 --port 8542
 ```
 
 Kemudian buka:
 
-- Aplikasi: `http://127.0.0.1:8000`
-- Dokumentasi API: `http://127.0.0.1:8000/docs`
-- Pemeriksaan server: `http://127.0.0.1:8000/api/health`
+- Aplikasi: `http://127.0.0.1:8542`
+- Dokumentasi API: `http://127.0.0.1:8542/docs`
+- Pemeriksaan server: `http://127.0.0.1:8542/api/health`
 
 Semua akun demo menggunakan password:
 
@@ -730,7 +730,7 @@ Pastikan juga jenis foto sesuai tahapnya:
 Jalankan kembali:
 
 ```bash
-python3 -m uvicorn backend.main:app --host 0.0.0.0 --port 8000
+python3 -m uvicorn backend.main:app --host 0.0.0.0 --port 8542
 ```
 
 Pastikan terminal tetap terbuka selama aplikasi digunakan.
