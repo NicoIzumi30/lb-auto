@@ -1,0 +1,12 @@
+{
+  "name": "LB AUTO Operations",
+  "short_name": "LB AUTO",
+  "description": "Sistem operasional showroom mobil premium LB AUTO",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f6f6f3",
+  "theme_color": "#ffffff",
+  "icons": [
+    { "src": "assets/logo.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

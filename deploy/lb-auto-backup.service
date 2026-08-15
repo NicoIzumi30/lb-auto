@@ -1,0 +1,14 @@
+[Unit]
+Description=Backup LB AUTO SQLite database and uploads
+RequiresMountsFor=/opt/lb-auto /var/backups/lb-auto
+
+[Service]
+Type=oneshot
+User=lbauto
+Group=lbauto
+Environment=LB_AUTO_APP_DIR=/opt/lb-auto
+Environment=LB_AUTO_BACKUP_DIR=/var/backups/lb-auto
+ExecStart=/opt/lb-auto/deploy/backup-lb-auto.sh
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily LB AUTO backup schedule
+
+[Timer]
+OnCalendar=*-*-* 02:30:00
+Persistent=true
+RandomizedDelaySec=10m
+Unit=lb-auto-backup.service
+
+[Install]
+WantedBy=timers.target
